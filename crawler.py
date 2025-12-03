@@ -248,6 +248,12 @@ class AutomartCrawler:
             for i, cell in enumerate(cells):
                 text = cell.get_text(strip=True)
 
+                # 차량번호 (상세페이지에서 전체 번호 가져오기)
+                if text == '차량번호' and i + 1 < len(cells):
+                    full_car_number = cells[i + 1].get_text(strip=True)
+                    if full_car_number and not full_car_number.startswith('XXX'):
+                        car.car_number = full_car_number
+
                 # 모델연도/기어
                 if '모델연도' in text and i + 1 < len(cells):
                     value = cells[i + 1].get_text(strip=True)
