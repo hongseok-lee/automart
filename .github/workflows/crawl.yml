@@ -3,7 +3,7 @@ name: Daily Automart Crawler
 on:
   schedule:
     # 매일 오전 01:40 KST (UTC 16:30 전날)
-    - cron: '40 16 * * *'
+    - cron: '50 16 * * *'
   workflow_dispatch:  # 수동 실행 가능
 
 jobs:
