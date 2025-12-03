@@ -41,6 +41,7 @@ class CarData:
     mileage: str = ""               # 주행거리
     expected_price: str = ""        # 예정가
     winning_bid: str = ""           # 낙찰금액
+    bid_count: str = ""             # 입찰건수
     description: str = ""           # 차량설명(특이사항)
     auction_date: str = ""          # 경매일시
     storage_location: str = ""      # 보관소
@@ -137,15 +138,70 @@ class AutomartCrawler:
         return institutions
 
     async def get_vehicles_from_list_page(self, url: str, institution: str, auction_date: str) -> List[CarData]:
-        """단일 목록 페이지에서 차량 정보 추출"""
+        """단일 목록 페이지에서 차량 정보 추출
+
+        sisul_BidResult.asp 페이지 구조:
+        - 7개 셀 행: 순번 | 차량번호 | 차량명 | 모델연도 | 낙찰금액 | 입찰건수 | 낙찰자
+        - 첫 번째 셀이 숫자인 경우가 데이터 행
+        """
         html = await self._get_html(url)
         if not html:
             return []
 
         soup = BeautifulSoup(html, 'lxml')
         vehicles = []
+        is_bid_result_page = 'sisul_BidResult.asp' in url
 
-        # 차량 목록 테이블 찾기
+        # sisul_BidResult.asp 페이지용 파싱 (정확한 낙찰금액)
+        if is_bid_result_page:
+            for tr in soup.find_all('tr'):
+                tds = tr.find_all('td')
+                # 7개 셀 행: 순번, 차량번호, 차량명, 모델연도, 낙찰금액, 입찰건수, 낙찰자
+                if len(tds) == 7:
+                    texts = [td.get_text(strip=True) for td in tds]
+                    # 첫 번째 셀이 숫자면 데이터 행
+                    if texts[0].isdigit():
+                        car_number = texts[1]
+                        car_model = texts[2]
+                        model_year = texts[3]
+
+                        # 낙찰금액에서 숫자만 추출
+                        bid_text = texts[4]
+                        bid_match = re.search(r'([\d,]+)', bid_text)
+                        winning_bid = bid_match.group(1) if bid_match else ""
+
+                        bid_count = texts[5]
+
+                        # 상세페이지 URL 추출
+                        link = tds[1].find('a', href=True)
+                        detail_url = ""
+                        if link:
+                            href = link.get('href', '')
+                            if href.startswith('/'):
+                                detail_url = urljoin(BASE_URL, href)
+                            elif not href.startswith('http'):
+                                detail_url = urljoin(BASE_URL + "/views/pub_auction/Common/", href)
+                            else:
+                                detail_url = href
+
+                        if car_number:
+                            car = CarData(
+                                institution=institution,
+                                car_number=car_number,
+                                car_model=car_model,
+                                model_year=model_year,
+                                winning_bid=winning_bid,
+                                bid_count=bid_count,
+                                auction_date=auction_date,
+                                detail_url=detail_url
+                            )
+                            vehicles.append(car)
+
+            # 데이터를 찾았으면 반환
+            if vehicles:
+                return vehicles
+
+        # 기존 파싱 로직 (sisul_total_view.asp 등 다른 페이지용 폴백)
         for link in soup.find_all('a', href=True):
             href = link.get('href', '')
             if 'CarDetail_in.asp' in href:
@@ -153,34 +209,41 @@ class AutomartCrawler:
                 if href.startswith('/'):
                     full_url = urljoin(BASE_URL, href)
 
-                # 링크 텍스트에서 차량번호와 모델 추출
+                # 링크 텍스트에서 차량번호 추출
                 link_text = link.get_text(strip=True)
                 parts = link_text.split(None, 1)
                 car_number = parts[0] if parts else ""
                 car_model = parts[1] if len(parts) > 1 else ""
 
-                # 같은 행에서 낙찰금액 찾기
+                # 같은 행에서 데이터 추출
                 parent_row = link.find_parent('tr')
                 winning_bid = ""
+                bid_count = ""
                 storage_location = ""
+                model_year = ""
 
                 if parent_row:
                     cells = parent_row.find_all('td')
-                    for cell in cells:
-                        text = cell.get_text(strip=True)
-                        # 금액 패턴 (숫자,숫자,숫자 형식)
-                        if re.match(r'^[\d,]+$', text) and len(text) > 3:
-                            winning_bid = text
-                        # 보관소 패턴
-                        if '보관소' in text:
-                            storage_location = text
+
+                    # 셀 개수에 따라 파싱
+                    if len(cells) >= 5:
+                        # 가격 패턴 찾기
+                        for cell in cells:
+                            text = cell.get_text(strip=True)
+                            if '원' in text and re.search(r'[\d,]+원', text):
+                                bid_match = re.search(r'([\d,]+)원', text)
+                                if bid_match:
+                                    winning_bid = bid_match.group(1)
+                                    break
 
                 if car_number:
                     car = CarData(
                         institution=institution,
                         car_number=car_number,
                         car_model=car_model,
+                        model_year=model_year,
                         winning_bid=winning_bid,
+                        bid_count=bid_count,
                         auction_date=auction_date,
                         storage_location=storage_location,
                         detail_url=full_url
@@ -376,6 +439,7 @@ class AutomartCrawler:
             'mileage': '주행거리',
             'expected_price': '예정가',
             'winning_bid': '낙찰금액',
+            'bid_count': '입찰건수',
             'description': '차량설명(특이사항)',
             'auction_date': '경매일시',
             'storage_location': '보관소',
