@@ -201,7 +201,91 @@ class AutomartCrawler:
             if vehicles:
                 return vehicles
 
-        # 기존 파싱 로직 (sisul_total_view.asp 등 다른 페이지용 폴백)
+        # sisul_total_view.asp 페이지용 파싱 (금융기관 - 13셀 구조)
+        is_total_view_page = 'sisul_total_view.asp' in url
+        if is_total_view_page:
+            for tr in soup.find_all('tr'):
+                tds = tr.find_all('td')
+                # 13개 셀 행: 금융기관 페이지 구조
+                # [2]: 차량번호+모델 (링크), [6]: 경매일시, [10]: 낙찰금액, [12]: 결과발표
+                if len(tds) >= 13:
+                    # CarDetail 링크가 있는 행만 처리
+                    link = None
+                    for td in tds:
+                        found_link = td.find('a', href=lambda x: x and 'CarDetail_in.asp' in x)
+                        if found_link:
+                            link = found_link
+                            break
+
+                    if not link:
+                        continue
+
+                    # 결과발표가 있는 행만 처리 (낙찰 완료된 차량)
+                    row_text = tr.get_text()
+                    if '결과발표' not in row_text:
+                        continue
+
+                    # 차량번호+모델 추출
+                    link_text = link.get_text(strip=True)
+                    # 차량번호는 보통 4~8글자 영숫자 (예: XXXX7695, 302가1234)
+                    car_match = re.match(r'^([A-Z가-힣0-9]{4,8})', link_text)
+                    if car_match:
+                        car_number = car_match.group(1)
+                        car_model = link_text[len(car_number):].strip()
+                    else:
+                        car_number = link_text[:8] if len(link_text) > 8 else link_text
+                        car_model = link_text[8:].strip() if len(link_text) > 8 else ""
+
+                    # 금액 패턴으로 낙찰금액 찾기 (숫자,숫자,숫자 형식)
+                    winning_bid = ""
+                    for td in tds:
+                        text = td.get_text(strip=True)
+                        # 순수 금액 패턴 (예: 27,190,000)
+                        if re.match(r'^[\d,]+$', text) and len(text) >= 7:
+                            winning_bid = text
+                            # 가장 큰 금액 사용 (낙찰금액이 보통 더 큼)
+                            break
+
+                    # 경매일시 추출
+                    auction_datetime = auction_date
+                    for td in tds:
+                        text = td.get_text(strip=True)
+                        date_match = re.search(r'(\d{4}\.\d{2}\.\d{2})', text)
+                        if date_match:
+                            auction_datetime = date_match.group(1).replace('.', '-')
+                            break
+
+                    # 상세페이지 URL
+                    href = link.get('href', '')
+                    if href.startswith('/'):
+                        detail_url = urljoin(BASE_URL, href)
+                    elif not href.startswith('http'):
+                        detail_url = urljoin(BASE_URL + "/views/pub_auction/Common/", href)
+                    else:
+                        detail_url = href
+
+                    if car_number and winning_bid:
+                        # 중복 체크 (같은 차량번호+낙찰금액이면 스킵)
+                        is_dup = any(
+                            v.car_number == car_number and v.winning_bid == winning_bid
+                            for v in vehicles
+                        )
+                        if not is_dup:
+                            car = CarData(
+                                institution=institution,
+                                car_number=car_number,
+                                car_model=car_model,
+                                winning_bid=winning_bid,
+                                auction_date=auction_datetime,
+                                detail_url=detail_url
+                            )
+                            vehicles.append(car)
+
+            # 데이터를 찾았으면 반환
+            if vehicles:
+                return vehicles
+
+        # 기존 파싱 로직 (다른 페이지용 폴백)
         for link in soup.find_all('a', href=True):
             href = link.get('href', '')
             if 'CarDetail_in.asp' in href:
