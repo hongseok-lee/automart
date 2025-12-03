@@ -137,6 +137,58 @@ class AutomartCrawler:
         logger.info(f"총 {len(institutions)}개 기관 링크 수집 완료")
         return institutions
 
+    async def _parse_bid_result_page(self, url: str, institution: str, auction_date: str) -> List[CarData]:
+        """sisul_BidResult.asp 페이지에서 차량 정보 추출 (입찰건수 포함)
+
+        7개 셀 행 구조: 순번 | 차량번호 | 차량명 | 모델연도 | 낙찰금액 | 입찰건수 | 낙찰자
+        """
+        html = await self._get_html(url)
+        if not html:
+            return []
+
+        soup = BeautifulSoup(html, 'lxml')
+        vehicles = []
+
+        for tr in soup.find_all('tr'):
+            tds = tr.find_all('td')
+            if len(tds) == 7:
+                texts = [td.get_text(strip=True) for td in tds]
+                if texts[0].isdigit():
+                    car_number = texts[1]
+                    car_model = texts[2]
+                    model_year = texts[3]
+                    bid_text = texts[4]
+                    bid_match = re.search(r'([\d,]+)', bid_text)
+                    winning_bid = bid_match.group(1) if bid_match else ""
+                    bid_count = texts[5]
+
+                    # 상세페이지 URL 추출
+                    link = tds[1].find('a', href=True)
+                    detail_url = ""
+                    if link:
+                        href = link.get('href', '')
+                        if href.startswith('/'):
+                            detail_url = urljoin(BASE_URL, href)
+                        elif not href.startswith('http'):
+                            detail_url = urljoin(BASE_URL + "/views/pub_auction/Common/", href)
+                        else:
+                            detail_url = href
+
+                    if car_number:
+                        car = CarData(
+                            institution=institution,
+                            car_number=car_number,
+                            car_model=car_model,
+                            model_year=model_year,
+                            winning_bid=winning_bid,
+                            bid_count=bid_count,
+                            auction_date=auction_date,
+                            detail_url=detail_url
+                        )
+                        vehicles.append(car)
+
+        return vehicles
+
     async def get_vehicles_from_list_page(self, url: str, institution: str, auction_date: str) -> List[CarData]:
         """단일 목록 페이지에서 차량 정보 추출
 
@@ -151,139 +203,27 @@ class AutomartCrawler:
         soup = BeautifulSoup(html, 'lxml')
         vehicles = []
         is_bid_result_page = 'sisul_BidResult.asp' in url
-
-        # sisul_BidResult.asp 페이지용 파싱 (정확한 낙찰금액)
-        if is_bid_result_page:
-            for tr in soup.find_all('tr'):
-                tds = tr.find_all('td')
-                # 7개 셀 행: 순번, 차량번호, 차량명, 모델연도, 낙찰금액, 입찰건수, 낙찰자
-                if len(tds) == 7:
-                    texts = [td.get_text(strip=True) for td in tds]
-                    # 첫 번째 셀이 숫자면 데이터 행
-                    if texts[0].isdigit():
-                        car_number = texts[1]
-                        car_model = texts[2]
-                        model_year = texts[3]
-
-                        # 낙찰금액에서 숫자만 추출
-                        bid_text = texts[4]
-                        bid_match = re.search(r'([\d,]+)', bid_text)
-                        winning_bid = bid_match.group(1) if bid_match else ""
-
-                        bid_count = texts[5]
-
-                        # 상세페이지 URL 추출
-                        link = tds[1].find('a', href=True)
-                        detail_url = ""
-                        if link:
-                            href = link.get('href', '')
-                            if href.startswith('/'):
-                                detail_url = urljoin(BASE_URL, href)
-                            elif not href.startswith('http'):
-                                detail_url = urljoin(BASE_URL + "/views/pub_auction/Common/", href)
-                            else:
-                                detail_url = href
-
-                        if car_number:
-                            car = CarData(
-                                institution=institution,
-                                car_number=car_number,
-                                car_model=car_model,
-                                model_year=model_year,
-                                winning_bid=winning_bid,
-                                bid_count=bid_count,
-                                auction_date=auction_date,
-                                detail_url=detail_url
-                            )
-                            vehicles.append(car)
-
-            # 데이터를 찾았으면 반환
-            if vehicles:
-                return vehicles
-
-        # sisul_total_view.asp 페이지용 파싱 (금융기관 - 13셀 구조)
         is_total_view_page = 'sisul_total_view.asp' in url
+
+        # sisul_total_view.asp 페이지인 경우 sisul_BidResult.asp 링크를 추출하여 개별 크롤링
         if is_total_view_page:
-            for tr in soup.find_all('tr'):
-                tds = tr.find_all('td')
-                # 13개 셀 행: 금융기관 페이지 구조
-                # [2]: 차량번호+모델 (링크), [6]: 경매일시, [10]: 낙찰금액, [12]: 결과발표
-                if len(tds) >= 13:
-                    # CarDetail 링크가 있는 행만 처리
-                    link = None
-                    for td in tds:
-                        found_link = td.find('a', href=lambda x: x and 'CarDetail_in.asp' in x)
-                        if found_link:
-                            link = found_link
-                            break
+            bid_result_urls = set()
+            for link in soup.find_all('a', href=True):
+                href = link.get('href', '')
+                if 'sisul_BidResult.asp' in href:
+                    full_url = urljoin(BASE_URL + "/views/pub_auction/Pub_CarHalbu/", href)
+                    bid_result_urls.add(full_url)
 
-                    if not link:
-                        continue
-
-                    # 결과발표가 있는 행만 처리 (낙찰 완료된 차량)
-                    row_text = tr.get_text()
-                    if '결과발표' not in row_text:
-                        continue
-
-                    # 차량번호+모델 추출
-                    link_text = link.get_text(strip=True)
-                    # 차량번호는 보통 4~8글자 영숫자 (예: XXXX7695, 302가1234)
-                    car_match = re.match(r'^([A-Z가-힣0-9]{4,8})', link_text)
-                    if car_match:
-                        car_number = car_match.group(1)
-                        car_model = link_text[len(car_number):].strip()
-                    else:
-                        car_number = link_text[:8] if len(link_text) > 8 else link_text
-                        car_model = link_text[8:].strip() if len(link_text) > 8 else ""
-
-                    # 금액 패턴으로 낙찰금액 찾기 (숫자,숫자,숫자 형식)
-                    winning_bid = ""
-                    for td in tds:
-                        text = td.get_text(strip=True)
-                        # 순수 금액 패턴 (예: 27,190,000)
-                        if re.match(r'^[\d,]+$', text) and len(text) >= 7:
-                            winning_bid = text
-                            # 가장 큰 금액 사용 (낙찰금액이 보통 더 큼)
-                            break
-
-                    # 경매일시 추출
-                    auction_datetime = auction_date
-                    for td in tds:
-                        text = td.get_text(strip=True)
-                        date_match = re.search(r'(\d{4}\.\d{2}\.\d{2})', text)
-                        if date_match:
-                            auction_datetime = date_match.group(1).replace('.', '-')
-                            break
-
-                    # 상세페이지 URL
-                    href = link.get('href', '')
-                    if href.startswith('/'):
-                        detail_url = urljoin(BASE_URL, href)
-                    elif not href.startswith('http'):
-                        detail_url = urljoin(BASE_URL + "/views/pub_auction/Common/", href)
-                    else:
-                        detail_url = href
-
-                    if car_number and winning_bid:
-                        # 중복 체크 (같은 차량번호+낙찰금액이면 스킵)
-                        is_dup = any(
-                            v.car_number == car_number and v.winning_bid == winning_bid
-                            for v in vehicles
-                        )
-                        if not is_dup:
-                            car = CarData(
-                                institution=institution,
-                                car_number=car_number,
-                                car_model=car_model,
-                                winning_bid=winning_bid,
-                                auction_date=auction_datetime,
-                                detail_url=detail_url
-                            )
-                            vehicles.append(car)
-
-            # 데이터를 찾았으면 반환
-            if vehicles:
+            # 각 sisul_BidResult.asp 페이지를 크롤링
+            if bid_result_urls:
+                for bid_url in bid_result_urls:
+                    sub_vehicles = await self._parse_bid_result_page(bid_url, institution, auction_date)
+                    vehicles.extend(sub_vehicles)
                 return vehicles
+
+        # sisul_BidResult.asp 페이지용 파싱 (정확한 낙찰금액 + 입찰건수)
+        if is_bid_result_page:
+            return await self._parse_bid_result_page(url, institution, auction_date)
 
         # 기존 파싱 로직 (다른 페이지용 폴백)
         for link in soup.find_all('a', href=True):
