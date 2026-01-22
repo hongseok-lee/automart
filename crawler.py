@@ -41,7 +41,7 @@ AJAX_LIST_PARAMS = {
 }
 AJAX_FORM_BASE = {
     'type': '', 'detail_1': '1', 'detail_2': '1', 'detail_3': '1',
-    'detail_4': '1', 'detail_5': '1', 'detail_6': '1', 'son2': '1'
+    'detail_4': '1', 'detail_5': '1', 'detail_6': '1', 'son2': '1', 'igf': ''
 }
 
 @dataclass
@@ -143,27 +143,42 @@ class AutomartCrawler:
             logger.info(f"[발표완료] {len(institutions)}개 기관")
 
         # 2. 진행중/진행예정 (POST 요청)
+        # 세션 초기화를 위해 먼저 페이지 로드 (num 파라미터별로)
         for status, params in AJAX_LIST_PARAMS.items():
             logger.info(f"[{status}] 기관 목록 수집 중...")
+            num = params['num']
+
+            # 먼저 해당 탭 페이지를 로드하여 세션 초기화
+            init_url = f"{BASE_URL}/views/pub_auction/pub_auction_intro.asp?num={num}"
+            try:
+                await self._get_html(init_url)
+            except:
+                pass
+
             form_data = {**AJAX_FORM_BASE, **params}
 
             try:
                 async with self.session.post(AJAX_LIST_URL, data=form_data, timeout=aiohttp.ClientTimeout(total=30)) as response:
                     if response.status == 200:
                         content = await response.read()
-                        try:
-                            html = content.decode('utf-8')
-                        except UnicodeDecodeError:
-                            html = content.decode('euc-kr', errors='ignore')
 
-                        soup = BeautifulSoup(html, 'lxml')
+                        # AJAX 응답은 HTML fragment라서 regex로 파싱
+                        # href="..." 패턴에서 기관 링크 추출
+                        href_pattern = rb'href="([^"]+(?:sisul_total_view|sisul_BidResult)\.asp[^"]*)"[^>]*>([^<]*)</a>'
+                        matches = re.findall(href_pattern, content)
+
                         count = 0
-                        for link in soup.find_all('a', href=True):
-                            href = link.get('href', '')
-                            if 'sisul_total_view.asp' in href or 'sisul_BidResult.asp' in href:
+                        for href_bytes, name_bytes in matches:
+                            href = href_bytes.decode('ascii', errors='ignore')
+                            try:
+                                name = name_bytes.decode('euc-kr')
+                            except:
+                                name = name_bytes.decode('utf-8', errors='ignore')
+
+                            if href:
                                 full_url = urljoin(BASE_URL, href)
-                                institution_name = f"[{status}]{link.get_text(strip=True)}"
-                                auction_date = ""  # POST 응답에는 날짜가 없을 수 있음
+                                institution_name = f"[{status}]{name.strip()}"
+                                auction_date = ""
                                 key = (full_url, auction_date)
                                 if key not in seen_keys:
                                     seen_keys.add(key)
