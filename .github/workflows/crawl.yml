@@ -24,8 +24,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Backup CSV before crawl
+        run: |
+          if [ -f automart_master.csv ]; then
+            cp automart_master.csv automart_master_backup.csv
+          fi
+
       - name: Run crawler
         run: python crawler.py
+
+      - name: Check for new Carnival KA4 and notify
+        run: python notify_carnival.py
+
+      - name: Cleanup backup
+        run: rm -f automart_master_backup.csv
 
       - name: Commit and push CSV
         run: |

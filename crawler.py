@@ -28,8 +28,21 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.automart.co.kr"
 INTRO_URL = f"{BASE_URL}/views/pub_auction/pub_auction_intro.asp?num=4"
-# AJAX 엔드포인트 - 발표완료 기관 목록
-AJAX_URL = f"{BASE_URL}/inc/pub_auction/pub_auction_announceList_ajax.asp?ing=Y&num=4&type=&detail_1=1&detail_2=1&detail_3=1&detail_4=1&detail_5=1&detail_6=1&son2=1"
+# AJAX 엔드포인트 - 기관 목록
+# 발표완료: announceList_ajax (GET)
+# 진행중/진행예정: list_ajax (POST)
+AJAX_ANNOUNCE_URL = f"{BASE_URL}/inc/pub_auction/pub_auction_announceList_ajax.asp?ing=Y&num=4&type=&detail_1=1&detail_2=1&detail_3=1&detail_4=1&detail_5=1&detail_6=1&son2=1"
+AJAX_LIST_URL = f"{BASE_URL}/inc/pub_auction/pub_auction_list_ajax.asp"
+
+# POST 요청용 form 데이터
+AJAX_LIST_PARAMS = {
+    "진행중": {'ing': 'Y', 'num': '2'},
+    "진행예정": {'ing': 'F', 'num': '5'},
+}
+AJAX_FORM_BASE = {
+    'type': '', 'detail_1': '1', 'detail_2': '1', 'detail_3': '1',
+    'detail_4': '1', 'detail_5': '1', 'detail_6': '1', 'son2': '1'
+}
 
 @dataclass
 class CarData:
@@ -97,42 +110,68 @@ class AutomartCrawler:
             return None
 
     async def get_institution_links(self) -> List[Tuple[str, str, str]]:
-        """AJAX 엔드포인트에서 기관 링크 수집
+        """AJAX 엔드포인트에서 기관 링크 수집 (발표완료 + 진행예정 + 진행중)
         Returns: [(기관명, URL, 발표일시), ...]
         """
-        logger.info("AJAX 엔드포인트에서 기관 목록 수집 중...")
-        html = await self._get_html(AJAX_URL)
-        if not html:
-            logger.error("AJAX 페이지 로드 실패")
-            return []
-
-        soup = BeautifulSoup(html, 'lxml')
         institutions = []
+        seen_keys = set()  # 중복 방지용
 
-        # 테이블에서 링크 추출
-        for row in soup.find_all('tr'):
-            link = row.find('a', href=True)
-            if not link:
-                continue
+        # 1. 발표완료 (GET 요청)
+        logger.info("[발표완료] 기관 목록 수집 중...")
+        html = await self._get_html(AJAX_ANNOUNCE_URL)
+        if html:
+            soup = BeautifulSoup(html, 'lxml')
+            for row in soup.find_all('tr'):
+                link = row.find('a', href=True)
+                if not link:
+                    continue
+                href = link.get('href', '')
+                if 'sisul_total_view.asp' in href or 'sisul_BidResult.asp' in href:
+                    full_url = urljoin(BASE_URL, href)
+                    institution_name = f"[발표완료]{link.get_text(strip=True)}"
+                    cells = row.find_all('td')
+                    auction_date = ""
+                    for cell in cells:
+                        text = cell.get_text(strip=True)
+                        if re.match(r'\d{4}-\d{2}-\d{2}', text):
+                            auction_date = text
+                            break
+                    key = (full_url, auction_date)
+                    if institution_name and key not in seen_keys:
+                        seen_keys.add(key)
+                        institutions.append((institution_name, full_url, auction_date))
+            logger.info(f"[발표완료] {len(institutions)}개 기관")
 
-            href = link.get('href', '')
-            # sisul_total_view.asp 또는 sisul_BidResult.asp 링크 찾기
-            if 'sisul_total_view.asp' in href or 'sisul_BidResult.asp' in href:
-                full_url = urljoin(BASE_URL, href)
-                institution_name = link.get_text(strip=True)
+        # 2. 진행중/진행예정 (POST 요청)
+        for status, params in AJAX_LIST_PARAMS.items():
+            logger.info(f"[{status}] 기관 목록 수집 중...")
+            form_data = {**AJAX_FORM_BASE, **params}
 
-                # 발표일시 찾기 (같은 행에서)
-                cells = row.find_all('td')
-                auction_date = ""
-                for cell in cells:
-                    text = cell.get_text(strip=True)
-                    if re.match(r'\d{4}-\d{2}-\d{2}', text):
-                        auction_date = text
-                        break
+            try:
+                async with self.session.post(AJAX_LIST_URL, data=form_data, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                    if response.status == 200:
+                        content = await response.read()
+                        try:
+                            html = content.decode('utf-8')
+                        except UnicodeDecodeError:
+                            html = content.decode('euc-kr', errors='ignore')
 
-                if institution_name:
-                    # 중복 제거 (같은 URL이더라도 다른 날짜면 추가)
-                    institutions.append((institution_name, full_url, auction_date))
+                        soup = BeautifulSoup(html, 'lxml')
+                        count = 0
+                        for link in soup.find_all('a', href=True):
+                            href = link.get('href', '')
+                            if 'sisul_total_view.asp' in href or 'sisul_BidResult.asp' in href:
+                                full_url = urljoin(BASE_URL, href)
+                                institution_name = f"[{status}]{link.get_text(strip=True)}"
+                                auction_date = ""  # POST 응답에는 날짜가 없을 수 있음
+                                key = (full_url, auction_date)
+                                if key not in seen_keys:
+                                    seen_keys.add(key)
+                                    institutions.append((institution_name, full_url, auction_date))
+                                    count += 1
+                        logger.info(f"[{status}] {count}개 기관")
+            except Exception as e:
+                logger.warning(f"[{status}] 수집 실패: {e}")
 
         logger.info(f"총 {len(institutions)}개 기관 링크 수집 완료")
         return institutions
@@ -473,6 +512,11 @@ class AutomartCrawler:
         # 새 데이터 DataFrame 생성
         new_df = pd.DataFrame([asdict(car) for car in self.results])
         new_df = new_df.rename(columns=column_mapping)
+
+        # 낙찰금액이 비어있으면 TBD로 표시 (진행예정/진행중)
+        new_df['낙찰금액'] = new_df['낙찰금액'].apply(
+            lambda x: 'TBD' if pd.isna(x) or str(x).strip() == '' else x
+        )
 
         # 기존 파일이 있으면 로드하여 병합
         existing_count = 0
