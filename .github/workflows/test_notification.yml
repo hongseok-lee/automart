@@ -1,0 +1,97 @@
+name: Test Notification (Mock)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mock_year:
+        description: '테스트 차량 연식 (2020-2023)'
+        required: false
+        default: '2022'
+      mock_price:
+        description: '테스트 낙찰가 (빈값=TBD)'
+        required: false
+        default: 'TBD'
+
+jobs:
+  test-notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas
+
+      - name: Create mock data
+        run: |
+          # 현재 마스터 파일을 백업으로 사용 (기존 데이터)
+          if [ -f automart_master.csv ]; then
+            cp automart_master.csv automart_master_backup.csv
+          else
+            # 백업 파일이 없으면 빈 파일 생성
+            echo "기관명,차량번호,차량모델,모델연도,주행거리,예정가,낙찰금액,입찰건수,차량설명(특이사항),경매일시,보관소,상세URL" > automart_master_backup.csv
+          fi
+
+          # 새 마스터에 mock 카니발 추가
+          python3 << 'EOF'
+          import pandas as pd
+          from datetime import datetime
+
+          # 기존 데이터 로드
+          try:
+              df = pd.read_csv('automart_master.csv')
+          except:
+              df = pd.DataFrame(columns=[
+                  '기관명', '차량번호', '차량모델', '모델연도', '주행거리',
+                  '예정가', '낙찰금액', '입찰건수', '차량설명(특이사항)',
+                  '경매일시', '보관소', '상세URL'
+              ])
+
+          # Mock 데이터 생성
+          mock_year = '${{ github.event.inputs.mock_year }}' or '2022'
+          mock_price = '${{ github.event.inputs.mock_price }}' or 'TBD'
+
+          mock_car = {
+              '기관명': '[테스트]알림테스트기관',
+              '차량번호': f'TEST{datetime.now().strftime("%H%M%S")}',
+              '차량모델': '카니발 4세대 (KA4) 시그니처 9인승',
+              '모델연도': int(mock_year),
+              '주행거리': '45,000',
+              '예정가': '35,000,000',
+              '낙찰금액': mock_price if mock_price else 'TBD',
+              '입찰건수': '0' if mock_price == 'TBD' else '15',
+              '차량설명(특이사항)': '알림 테스트용 Mock 데이터',
+              '경매일시': datetime.now().strftime('%Y-%m-%d %H:%M'),
+              '보관소': '테스트보관소',
+              '상세URL': 'https://www.automart.co.kr/test'
+          }
+
+          # Mock 데이터 추가
+          df = pd.concat([pd.DataFrame([mock_car]), df], ignore_index=True)
+          df.to_csv('automart_master.csv', index=False, encoding='utf-8-sig')
+
+          print(f"Mock 카니발 추가: {mock_year}년식, 가격: {mock_price}")
+          EOF
+
+      - name: Run notification test
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          echo "=== 테스트 알림 발송 ==="
+          python notify_carnival.py
+
+      - name: Cleanup (restore original)
+        if: always()
+        run: |
+          # 원래 파일 복원
+          git checkout automart_master.csv 2>/dev/null || true
+          rm -f automart_master_backup.csv
+          echo "Cleanup complete"
