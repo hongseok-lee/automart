@@ -83,7 +83,7 @@ jobs:
 
       - name: Run notification test
         env:
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOPIC: automart-carnival-d8e8afda
         run: |
           echo "=== 테스트 알림 발송 ==="
           python notify_carnival.py
