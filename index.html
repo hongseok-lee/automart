@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>오토마트 경매 낙찰 데이터</title>
+<title>오토마트 경매 데이터</title>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <style>
   * { box-sizing: border-box; }
@@ -27,6 +27,38 @@
     font-size: 0.85rem;
     color: #666;
   }
+  /* Tab buttons */
+  .tab-bar {
+    max-width: 1400px;
+    margin: 0 auto 12px;
+    display: flex;
+    gap: 8px;
+  }
+  .tab-btn {
+    padding: 8px 20px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tab-btn:hover { background: #f0f0f0; }
+  .tab-btn.active {
+    background: #1a73e8;
+    color: #fff;
+    border-color: #1a73e8;
+  }
+  .tab-btn .badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.25);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 0.75rem;
+    margin-left: 6px;
+  }
+  .tab-btn.active .badge { background: rgba(255,255,255,0.3); }
+  .tab-btn:not(.active) .badge { background: #eee; color: #666; }
   .table-wrap {
     max-width: 1400px;
     margin: 0 auto;
@@ -83,6 +115,13 @@
     text-align: right;
     white-space: nowrap;
   }
+  /* Prediction highlight */
+  .pred-col {
+    text-align: right;
+    white-space: nowrap;
+    color: #1a73e8;
+    font-weight: 600;
+  }
   /* Link styling */
   .detail-link {
     color: #1a73e8;
@@ -97,6 +136,7 @@
     body { padding: 8px; }
     .table-wrap { padding: 8px; border-radius: 4px; }
     header h1 { font-size: 1.1rem; }
+    .tab-bar { flex-wrap: wrap; }
   }
   /* DataTables info/paging */
   .dataTables_wrapper .dataTables_info,
@@ -110,16 +150,6 @@
   }
   .dataTables_wrapper .dataTables_length select {
     font-size: 0.85rem;
-  }
-  /* 차량설명 child row */
-  table.dataTable tr.child-row td {
-    padding: 8px 12px;
-    background: #fafafa;
-    font-size: 0.8rem;
-    line-height: 1.5;
-    color: #555;
-    white-space: pre-wrap;
-    word-break: break-all;
   }
   /* Chart section */
   .charts-section {
@@ -160,9 +190,15 @@
 <body>
 
 <header>
-  <h1>오토마트 경매 낙찰 데이터</h1>
+  <h1>오토마트 경매 데이터</h1>
   <p id="stats"></p>
 </header>
+
+<div class="tab-bar" id="tab-bar" style="display:none;">
+  <button class="tab-btn active" data-tab="upcoming">경매 예정<span class="badge" id="cnt-upcoming">0</span></button>
+  <button class="tab-btn" data-tab="completed">낙찰 결과<span class="badge" id="cnt-completed">0</span></button>
+  <button class="tab-btn" data-tab="all">전체<span class="badge" id="cnt-all">0</span></button>
+</div>
 
 <div class="table-wrap">
   <div id="loading">데이터를 불러오는 중...</div>
@@ -198,49 +234,55 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (function() {
-  // Column definitions
+  // Column definitions — index 0 is hidden status column
+  var COL_STATUS = 0;
   var COLUMNS = [
-    { key: '경매일시',   label: '경매일시',   filter: 'text' },
-    { key: '기관명',     label: '기관명',     filter: 'text' },
-    { key: '차량모델',   label: '차량모델',   filter: 'text' },
-    { key: '차량번호',   label: '차량번호',   filter: 'text' },
-    { key: '모델연도',   label: '연도',       filter: 'select' },
-    { key: '주행거리',   label: '주행거리(km)', filter: 'text', numeric: true },
-    { key: '예정가',     label: '예정가(원)',  filter: 'text', numeric: true },
-    { key: '낙찰금액',   label: '낙찰금액(원)', filter: 'text', numeric: true },
-    { key: '예측낙찰금액', label: '예측(원)', filter: 'text', numeric: true },
-    { key: '입찰건수',   label: '입찰',       filter: 'text', numeric: true },
-    { key: '보관소',     label: '보관소',     filter: 'select' },
-    { key: '상세URL',    label: '상세',       filter: 'none' }
+    { key: '_status',       label: '상태',         filter: 'none',   hidden: true },
+    { key: '경매일시',       label: '경매일시',     filter: 'text' },
+    { key: '기관명',         label: '기관명',       filter: 'text' },
+    { key: '차량모델',       label: '차량모델',     filter: 'text' },
+    { key: '차량번호',       label: '차량번호',     filter: 'text' },
+    { key: '모델연도',       label: '연도',         filter: 'select' },
+    { key: '주행거리',       label: '주행거리(km)', filter: 'text', numeric: true },
+    { key: '예정가',         label: '예정가(원)',   filter: 'text', numeric: true },
+    { key: '낙찰금액',       label: '낙찰금액(원)', filter: 'text', numeric: true },
+    { key: '예측낙찰금액',   label: '예측낙찰금액(원)', filter: 'text', numeric: true, pred: true },
+    { key: '입찰건수',       label: '입찰',         filter: 'text', numeric: true },
+    { key: '보관소',         label: '보관소',       filter: 'select' },
+    { key: '상세URL',        label: '상세',         filter: 'none' }
   ];
 
-  // Parse number with commas
+  // Column indices for visibility toggle
+  var IDX_BID     = COLUMNS.findIndex(function(c) { return c.key === '낙찰금액'; });
+  var IDX_PRED    = COLUMNS.findIndex(function(c) { return c.key === '예측낙찰금액'; });
+  var IDX_BIDCNT  = COLUMNS.findIndex(function(c) { return c.key === '입찰건수'; });
+
   function parseNum(s) {
     if (!s) return 0;
     var n = Number(String(s).replace(/[^0-9.-]/g, ''));
     return isNaN(n) ? 0 : n;
   }
 
-  // Format number with commas
   function fmtNum(s) {
     var n = parseNum(s);
     return n ? n.toLocaleString('ko-KR') : s || '';
   }
 
-  // Shorten institution name: extract the most specific bracket content
   function shortOrg(s) {
     if (!s) return '';
     var parts = s.match(/\[([^\]]+)\]/g);
     if (parts && parts.length >= 2) {
-      // Use last bracket = most specific name
       return parts[parts.length - 1].replace(/[\[\]]/g, '');
     }
-    // Single bracket + text (e.g., "[진행중]개인 공개매각")
     if (parts && parts.length === 1) {
       var rest = s.replace(/^\[[^\]]+\]/, '').trim();
       return rest || parts[0].replace(/[\[\]]/g, '');
     }
     return s;
+  }
+
+  function isUpcoming(row) {
+    return (row['기관명'] || '').indexOf('진행중') >= 0;
   }
 
   var csvUrl = 'automart_master.csv';
@@ -268,8 +310,18 @@
     var headerRow = document.getElementById('header-row');
     var filterRow = document.getElementById('filter-row');
 
-    // Build header
-    COLUMNS.forEach(function(col) {
+    // Count upcoming/completed
+    var upcomingCount = 0, completedCount = 0;
+    data.forEach(function(row) {
+      if (isUpcoming(row)) upcomingCount++;
+      else completedCount++;
+    });
+    document.getElementById('cnt-upcoming').textContent = upcomingCount.toLocaleString();
+    document.getElementById('cnt-completed').textContent = completedCount.toLocaleString();
+    document.getElementById('cnt-all').textContent = data.length.toLocaleString();
+
+    // Build header + filter row
+    COLUMNS.forEach(function(col, colIdx) {
       var th = document.createElement('th');
       th.textContent = col.label;
       headerRow.appendChild(th);
@@ -278,12 +330,14 @@
       if (col.filter === 'select') {
         var sel = document.createElement('select');
         sel.className = 'col-filter';
+        sel.dataset.colIdx = colIdx;
         sel.innerHTML = '<option value="">전체</option>';
         fth.appendChild(sel);
       } else if (col.filter === 'text') {
         var inp = document.createElement('input');
         inp.type = 'text';
         inp.className = 'col-filter';
+        inp.dataset.colIdx = colIdx;
         inp.placeholder = '검색...';
         fth.appendChild(inp);
       }
@@ -295,14 +349,14 @@
     data.forEach(function(row) {
       var r = [];
       COLUMNS.forEach(function(col) {
-        var val = row[col.key] || '';
-        if (col.key === '기관명') {
-          val = shortOrg(val);
+        if (col.key === '_status') {
+          r.push(isUpcoming(row) ? '예정' : '완료');
+        } else if (col.key === '기관명') {
+          r.push(shortOrg(row[col.key] || ''));
+        } else {
+          r.push(row[col.key] || '');
         }
-        r.push(val);
       });
-      // Store 차량설명 as extra data
-      r._desc = row['차량설명(특이사항)'] || '';
       tableData.push(r);
     });
 
@@ -318,19 +372,30 @@
 
     // Show table
     document.getElementById('loading').style.display = 'none';
+    document.getElementById('tab-bar').style.display = 'flex';
     var tbl = document.getElementById('auction-table');
     tbl.style.display = 'table';
 
-    // Column defs for DataTables
+    // Column defs
     var columnDefs = [];
     COLUMNS.forEach(function(col, i) {
       var def = { targets: i };
-      if (col.numeric) {
+      if (col.hidden) {
+        def.visible = false;
+      }
+      if (col.numeric && !col.pred) {
         def.render = function(data, type) {
           if (type === 'sort' || type === 'type') return parseNum(data);
           return fmtNum(data);
         };
         def.className = 'num-col';
+      }
+      if (col.pred) {
+        def.render = function(data, type) {
+          if (type === 'sort' || type === 'type') return parseNum(data);
+          return fmtNum(data);
+        };
+        def.className = 'pred-col';
       }
       if (col.key === '상세URL') {
         def.render = function(data) {
@@ -340,20 +405,17 @@
         def.orderable = false;
         def.searchable = false;
       }
-      if (col.key === '기관명') {
-        def.className = 'nowrap';
-      }
       columnDefs.push(def);
     });
 
     // Init DataTables
     var dt = $(tbl).DataTable({
-      data: tableData.map(function(r) { return r.slice(0, COLUMNS.length); }),
+      data: tableData,
       columns: COLUMNS.map(function(col) {
         return { title: col.label, type: col.numeric ? 'num' : 'string' };
       }),
       columnDefs: columnDefs,
-      order: [[0, 'desc']],  // 경매일시 내림차순
+      order: [[1, 'asc']],  // 경매일시 오름차순 (기본: 경매 예정)
       pageLength: 50,
       lengthMenu: [25, 50, 100, 200],
       scrollX: true,
@@ -364,12 +426,7 @@
         infoEmpty: '데이터 없음',
         infoFiltered: '(전체 _MAX_건 중 필터됨)',
         zeroRecords: '일치하는 데이터가 없습니다',
-        paginate: {
-          first: '처음',
-          last: '마지막',
-          next: '다음',
-          previous: '이전'
-        }
+        paginate: { first: '처음', last: '마지막', next: '다음', previous: '이전' }
       },
       deferRender: true
     });
@@ -387,10 +444,10 @@
       }
     });
 
-    // Bind filter events
-    $(filterRow).find('.col-filter').each(function(i) {
+    // Bind filter events using data-col-idx
+    $(filterRow).find('.col-filter').each(function() {
       var el = this;
-      var colIdx = i;
+      var colIdx = Number(el.dataset.colIdx);
       if (el.tagName === 'SELECT') {
         $(el).on('change', function() {
           var val = $.fn.dataTable.util.escapeRegex(this.value);
@@ -403,17 +460,52 @@
       }
     });
 
+    // Tab switching
+    function switchTab(tab) {
+      if (tab === 'upcoming') {
+        dt.column(COL_STATUS).search('^예정$', true, false);
+        dt.column(IDX_BID).visible(false);
+        dt.column(IDX_BIDCNT).visible(false);
+        dt.column(IDX_PRED).visible(true);
+        dt.order([[1, 'asc']]);
+      } else if (tab === 'completed') {
+        dt.column(COL_STATUS).search('^완료$', true, false);
+        dt.column(IDX_BID).visible(true);
+        dt.column(IDX_BIDCNT).visible(true);
+        dt.column(IDX_PRED).visible(false);
+        dt.order([[1, 'desc']]);
+      } else {
+        dt.column(COL_STATUS).search('');
+        dt.column(IDX_BID).visible(true);
+        dt.column(IDX_BIDCNT).visible(true);
+        dt.column(IDX_PRED).visible(true);
+        dt.order([[1, 'desc']]);
+      }
+      dt.draw();
+    }
+
+    document.querySelectorAll('.tab-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        switchTab(btn.dataset.tab);
+      });
+    });
+
+    // Default: show upcoming
+    switchTab('upcoming');
+
     // Stats
     document.getElementById('stats').textContent =
-      '총 ' + data.length.toLocaleString() + '건 | 마지막 업데이트: CSV 커밋 시점 기준';
+      '경매 예정 ' + upcomingCount.toLocaleString() + '건 | 낙찰 결과 ' + completedCount.toLocaleString() + '건';
   }
 
-  // Custom plugin: draw lines connecting start→bid for each case
+  // Dumbbell chart plugin
   var dumbbellPlugin = {
     id: 'dumbbell',
     beforeDatasetsDraw: function(chart) {
-      var meta0 = chart.getDatasetMeta(0); // 예정가
-      var meta1 = chart.getDatasetMeta(1); // 낙찰금액
+      var meta0 = chart.getDatasetMeta(0);
+      var meta1 = chart.getDatasetMeta(1);
       var ctx = chart.ctx;
       var pairs = chart.data._pairs || [];
       ctx.save();
@@ -421,7 +513,7 @@
         var startEl = meta0.data[p[0]];
         var bidEl = meta1.data[p[1]];
         if (!startEl || !bidEl) return;
-        var up = bidEl.y < startEl.y; // bid > start means higher on chart
+        var up = bidEl.y < startEl.y;
         ctx.beginPath();
         ctx.moveTo(startEl.x, startEl.y);
         ctx.lineTo(bidEl.x, bidEl.y);
@@ -452,44 +544,40 @@
         var start = parseNum(row['예정가']);
         var bid = parseNum(row['낙찰금액']);
         if (!year || year < 2000 || start <= 0 || bid <= 0) return;
-        // jitter x so overlapping points spread out
         var jitter = (Math.random() - 0.5) * 0.4;
-        var info = { model: row['차량모델'], date: row['경매일시'], start: start, bid: bid };
         var si = startPts.length;
         var bi = bidPts.length;
-        startPts.push({ x: year + jitter, y: start / MAN, model: info.model, date: info.date, bid: bid / MAN });
-        bidPts.push({ x: year + jitter, y: bid / MAN, model: info.model, date: info.date, start: start / MAN });
+        startPts.push({ x: year + jitter, y: start / MAN, model: row['차량모델'], date: row['경매일시'], bid: bid / MAN });
+        bidPts.push({ x: year + jitter, y: bid / MAN, model: row['차량모델'], date: row['경매일시'], start: start / MAN });
         pairs.push([si, bi]);
       });
-
-      var chartData = {
-        datasets: [
-          {
-            label: '예정가(시작가)',
-            data: startPts,
-            backgroundColor: 'rgba(59,130,246,0.5)',
-            borderColor: 'rgba(59,130,246,0.8)',
-            pointRadius: 3.5,
-            pointHoverRadius: 7,
-            order: 2
-          },
-          {
-            label: '낙찰금액',
-            data: bidPts,
-            backgroundColor: 'rgba(239,68,68,0.5)',
-            borderColor: 'rgba(239,68,68,0.8)',
-            pointRadius: 3.5,
-            pointHoverRadius: 7,
-            order: 1
-          }
-        ],
-        _pairs: pairs
-      };
 
       var ctx = document.getElementById(cfg.id).getContext('2d');
       new Chart(ctx, {
         type: 'scatter',
-        data: chartData,
+        data: {
+          datasets: [
+            {
+              label: '예정가(시작가)',
+              data: startPts,
+              backgroundColor: 'rgba(59,130,246,0.5)',
+              borderColor: 'rgba(59,130,246,0.8)',
+              pointRadius: 3.5,
+              pointHoverRadius: 7,
+              order: 2
+            },
+            {
+              label: '낙찰금액',
+              data: bidPts,
+              backgroundColor: 'rgba(239,68,68,0.5)',
+              borderColor: 'rgba(239,68,68,0.8)',
+              pointRadius: 3.5,
+              pointHoverRadius: 7,
+              order: 1
+            }
+          ],
+          _pairs: pairs
+        },
         options: {
           responsive: true,
           maintainAspectRatio: false,
