@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>오토마트 경매 낙찰 데이터</title>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+    margin: 0;
+    padding: 16px;
+    background: #f5f5f5;
+    color: #333;
+  }
+  header {
+    max-width: 1400px;
+    margin: 0 auto 16px;
+  }
+  header h1 {
+    font-size: 1.4rem;
+    margin: 0 0 4px;
+  }
+  header p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #666;
+  }
+  .table-wrap {
+    max-width: 1400px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    overflow-x: auto;
+  }
+  #loading {
+    text-align: center;
+    padding: 60px 0;
+    font-size: 1rem;
+    color: #888;
+  }
+  #error {
+    text-align: center;
+    padding: 40px 0;
+    color: #c00;
+    display: none;
+  }
+  /* DataTables overrides */
+  table.dataTable {
+    width: 100% !important;
+    font-size: 0.82rem;
+  }
+  table.dataTable thead th {
+    background: #f8f9fa;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    padding: 8px 6px;
+  }
+  table.dataTable tbody td {
+    padding: 6px;
+    vertical-align: middle;
+  }
+  table.dataTable tbody tr:hover {
+    background: #f0f7ff !important;
+  }
+  /* Column filter inputs */
+  .col-filter {
+    width: 100%;
+    padding: 3px 4px;
+    font-size: 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    margin-top: 4px;
+  }
+  select.col-filter {
+    cursor: pointer;
+  }
+  /* Number columns right-align */
+  .num-col {
+    text-align: right;
+    white-space: nowrap;
+  }
+  /* Link styling */
+  .detail-link {
+    color: #1a73e8;
+    text-decoration: none;
+    font-size: 0.75rem;
+  }
+  .detail-link:hover {
+    text-decoration: underline;
+  }
+  /* Responsive tweaks */
+  @media (max-width: 768px) {
+    body { padding: 8px; }
+    .table-wrap { padding: 8px; border-radius: 4px; }
+    header h1 { font-size: 1.1rem; }
+  }
+  /* DataTables info/paging */
+  .dataTables_wrapper .dataTables_info,
+  .dataTables_wrapper .dataTables_paginate {
+    font-size: 0.8rem;
+    padding-top: 8px;
+  }
+  .dataTables_wrapper .dataTables_filter input {
+    font-size: 0.85rem;
+    padding: 4px 8px;
+  }
+  .dataTables_wrapper .dataTables_length select {
+    font-size: 0.85rem;
+  }
+  /* 차량설명 child row */
+  table.dataTable tr.child-row td {
+    padding: 8px 12px;
+    background: #fafafa;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: #555;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>오토마트 경매 낙찰 데이터</h1>
+  <p id="stats"></p>
+</header>
+
+<div class="table-wrap">
+  <div id="loading">데이터를 불러오는 중...</div>
+  <div id="error">데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</div>
+  <table id="auction-table" class="display" style="display:none;">
+    <thead>
+      <tr id="filter-row"></tr>
+      <tr id="header-row"></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script>
+(function() {
+  // Column definitions
+  var COLUMNS = [
+    { key: '경매일시',   label: '경매일시',   filter: 'text' },
+    { key: '기관명',     label: '기관명',     filter: 'select' },
+    { key: '차량모델',   label: '차량모델',   filter: 'text' },
+    { key: '차량번호',   label: '차량번호',   filter: 'text' },
+    { key: '모델연도',   label: '연도',       filter: 'select' },
+    { key: '주행거리',   label: '주행거리(km)', filter: 'text', numeric: true },
+    { key: '예정가',     label: '예정가(원)',  filter: 'text', numeric: true },
+    { key: '낙찰금액',   label: '낙찰금액(원)', filter: 'text', numeric: true },
+    { key: '입찰건수',   label: '입찰',       filter: 'text', numeric: true },
+    { key: '보관소',     label: '보관소',     filter: 'select' },
+    { key: '상세URL',    label: '상세',       filter: 'none' }
+  ];
+
+  // Parse number with commas
+  function parseNum(s) {
+    if (!s) return 0;
+    var n = Number(String(s).replace(/[^0-9.-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+
+  // Format number with commas
+  function fmtNum(s) {
+    var n = parseNum(s);
+    return n ? n.toLocaleString('ko-KR') : s || '';
+  }
+
+  // Shorten institution name
+  function shortOrg(s) {
+    if (!s) return '';
+    // Remove outer brackets: [금융기관][BMW파이낸셜][BMW파이낸셜] -> BMW파이낸셜
+    var parts = s.match(/\[([^\]]+)\]/g);
+    if (parts && parts.length >= 2) {
+      return parts[1].replace(/[\[\]]/g, '');
+    }
+    return s;
+  }
+
+  var csvUrl = 'automart_master.csv';
+
+  Papa.parse(csvUrl, {
+    download: true,
+    header: true,
+    skipEmptyLines: true,
+    complete: function(results) {
+      if (!results.data || results.data.length === 0) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'block';
+        return;
+      }
+      buildTable(results.data);
+    },
+    error: function() {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error').style.display = 'block';
+    }
+  });
+
+  function buildTable(data) {
+    var headerRow = document.getElementById('header-row');
+    var filterRow = document.getElementById('filter-row');
+
+    // Build header
+    COLUMNS.forEach(function(col) {
+      var th = document.createElement('th');
+      th.textContent = col.label;
+      headerRow.appendChild(th);
+
+      var fth = document.createElement('th');
+      if (col.filter === 'select') {
+        var sel = document.createElement('select');
+        sel.className = 'col-filter';
+        sel.innerHTML = '<option value="">전체</option>';
+        fth.appendChild(sel);
+      } else if (col.filter === 'text') {
+        var inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'col-filter';
+        inp.placeholder = '검색...';
+        fth.appendChild(inp);
+      }
+      filterRow.appendChild(fth);
+    });
+
+    // Prepare table data
+    var tableData = [];
+    data.forEach(function(row) {
+      var r = [];
+      COLUMNS.forEach(function(col) {
+        var val = row[col.key] || '';
+        if (col.key === '기관명') {
+          val = shortOrg(val);
+        }
+        r.push(val);
+      });
+      // Store 차량설명 as extra data
+      r._desc = row['차량설명(특이사항)'] || '';
+      tableData.push(r);
+    });
+
+    // Collect select options
+    var selectOpts = {};
+    COLUMNS.forEach(function(col, i) {
+      if (col.filter === 'select') {
+        var vals = {};
+        tableData.forEach(function(r) { if (r[i]) vals[r[i]] = true; });
+        selectOpts[i] = Object.keys(vals).sort();
+      }
+    });
+
+    // Show table
+    document.getElementById('loading').style.display = 'none';
+    var tbl = document.getElementById('auction-table');
+    tbl.style.display = 'table';
+
+    // Column defs for DataTables
+    var columnDefs = [];
+    COLUMNS.forEach(function(col, i) {
+      var def = { targets: i };
+      if (col.numeric) {
+        def.render = function(data, type) {
+          if (type === 'sort' || type === 'type') return parseNum(data);
+          return fmtNum(data);
+        };
+        def.className = 'num-col';
+      }
+      if (col.key === '상세URL') {
+        def.render = function(data) {
+          if (!data) return '';
+          return '<a class="detail-link" href="' + data + '" target="_blank" rel="noopener">보기</a>';
+        };
+        def.orderable = false;
+        def.searchable = false;
+      }
+      if (col.key === '기관명') {
+        def.className = 'nowrap';
+      }
+      columnDefs.push(def);
+    });
+
+    // Init DataTables
+    var dt = $(tbl).DataTable({
+      data: tableData.map(function(r) { return r.slice(0, COLUMNS.length); }),
+      columns: COLUMNS.map(function(col) {
+        return { title: col.label, type: col.numeric ? 'num' : 'string' };
+      }),
+      columnDefs: columnDefs,
+      order: [[0, 'desc']],  // 경매일시 내림차순
+      pageLength: 50,
+      lengthMenu: [25, 50, 100, 200],
+      scrollX: true,
+      language: {
+        search: '검색:',
+        lengthMenu: '_MENU_ 건씩 보기',
+        info: '총 _TOTAL_건 중 _START_ ~ _END_',
+        infoEmpty: '데이터 없음',
+        infoFiltered: '(전체 _MAX_건 중 필터됨)',
+        zeroRecords: '일치하는 데이터가 없습니다',
+        paginate: {
+          first: '처음',
+          last: '마지막',
+          next: '다음',
+          previous: '이전'
+        }
+      },
+      deferRender: true,
+      stateSave: true
+    });
+
+    // Populate select filters
+    Object.keys(selectOpts).forEach(function(i) {
+      var sel = filterRow.children[i].querySelector('select');
+      if (sel) {
+        selectOpts[i].forEach(function(v) {
+          var opt = document.createElement('option');
+          opt.value = v;
+          opt.textContent = v;
+          sel.appendChild(opt);
+        });
+      }
+    });
+
+    // Bind filter events
+    $(filterRow).find('.col-filter').each(function(i) {
+      var el = this;
+      var colIdx = i;
+      if (el.tagName === 'SELECT') {
+        $(el).on('change', function() {
+          var val = $.fn.dataTable.util.escapeRegex(this.value);
+          dt.column(colIdx).search(val ? '^' + val + '$' : '', true, false).draw();
+        });
+      } else {
+        $(el).on('keyup', function() {
+          dt.column(colIdx).search(this.value).draw();
+        });
+      }
+    });
+
+    // Stats
+    document.getElementById('stats').textContent =
+      '총 ' + data.length.toLocaleString() + '건 | 마지막 업데이트: CSV 커밋 시점 기준';
+  }
+})();
+</script>
+</body>
+</html>
