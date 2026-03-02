@@ -201,7 +201,7 @@
   // Column definitions
   var COLUMNS = [
     { key: '경매일시',   label: '경매일시',   filter: 'text' },
-    { key: '기관명',     label: '기관명',     filter: 'select' },
+    { key: '기관명',     label: '기관명',     filter: 'text' },
     { key: '차량모델',   label: '차량모델',   filter: 'text' },
     { key: '차량번호',   label: '차량번호',   filter: 'text' },
     { key: '모델연도',   label: '연도',       filter: 'select' },
@@ -227,13 +227,18 @@
     return n ? n.toLocaleString('ko-KR') : s || '';
   }
 
-  // Shorten institution name
+  // Shorten institution name: extract the most specific bracket content
   function shortOrg(s) {
     if (!s) return '';
-    // Remove outer brackets: [금융기관][BMW파이낸셜][BMW파이낸셜] -> BMW파이낸셜
     var parts = s.match(/\[([^\]]+)\]/g);
     if (parts && parts.length >= 2) {
-      return parts[1].replace(/[\[\]]/g, '');
+      // Use last bracket = most specific name
+      return parts[parts.length - 1].replace(/[\[\]]/g, '');
+    }
+    // Single bracket + text (e.g., "[진행중]개인 공개매각")
+    if (parts && parts.length === 1) {
+      var rest = s.replace(/^\[[^\]]+\]/, '').trim();
+      return rest || parts[0].replace(/[\[\]]/g, '');
     }
     return s;
   }
@@ -366,8 +371,7 @@
           previous: '이전'
         }
       },
-      deferRender: true,
-      stateSave: true
+      deferRender: true
     });
 
     // Populate select filters
