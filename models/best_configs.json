@@ -1,0 +1,82 @@
+{
+  "carnival": [
+    {
+      "config_id": 0,
+      "config": {
+        "n_estimators": 200,
+        "max_depth": 4,
+        "learning_rate": 0.1,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 1,
+        "gamma": 0,
+        "reg_alpha": 0,
+        "reg_lambda": 1
+      },
+      "val_rmse": 643522.5553337205,
+      "val_mae": 230458.6875,
+      "val_r2": 0.9980608820915222,
+      "test_rmse": 1263779.1167044092,
+      "test_r2": 0.992790699005127
+    },
+    {
+      "config_id": 1,
+      "config": {
+        "n_estimators": 500,
+        "max_depth": 6,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 1,
+        "gamma": 0,
+        "reg_alpha": 0,
+        "reg_lambda": 1
+      },
+      "val_rmse": 650850.4334737282,
+      "val_mae": 186302.875,
+      "val_r2": 0.9980164766311646,
+      "test_rmse": 1233934.9798147539,
+      "test_r2": 0.993127167224884
+    }
+  ],
+  "sorento": [
+    {
+      "config_id": 1,
+      "config": {
+        "n_estimators": 500,
+        "max_depth": 6,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 1,
+        "gamma": 0,
+        "reg_alpha": 0,
+        "reg_lambda": 1
+      },
+      "val_rmse": 620881.9697795247,
+      "val_mae": 148908.234375,
+      "val_r2": 0.9968021512031555,
+      "test_rmse": 1420719.2712958285,
+      "test_r2": 0.984143853187561
+    },
+    {
+      "config_id": 0,
+      "config": {
+        "n_estimators": 200,
+        "max_depth": 4,
+        "learning_rate": 0.1,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 1,
+        "gamma": 0,
+        "reg_alpha": 0,
+        "reg_lambda": 1
+      },
+      "val_rmse": 917716.9365423277,
+      "val_mae": 213502.796875,
+      "val_r2": 0.9930135011672974,
+      "test_rmse": 1349980.7799864782,
+      "test_r2": 0.9856835007667542
+    }
+  ]
+}

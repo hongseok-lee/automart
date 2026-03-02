@@ -1,0 +1,87 @@
+name: Train & Predict
+
+on:
+  workflow_run:
+    workflows: ["Daily Automart Crawler"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    strategy:
+      matrix:
+        config_id: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Train with config ${{ matrix.config_id }}
+        run: python train_search.py --config-id ${{ matrix.config_id }}
+
+      - name: Upload search results
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-${{ matrix.config_id }}
+          path: search_results/
+          retention-days: 1
+
+  select-best:
+    needs: search
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download all search results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: search-*
+          path: search_results/
+          merge-multiple: true
+
+      - name: Select best 5 models
+        run: python select_best.py
+
+      - name: Run predictions (ensemble + SWA)
+        run: python predict.py
+
+      - name: Commit and push
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          DATE=$(TZ=Asia/Seoul date +%Y-%m-%d)
+
+          git add models/ automart_master.csv
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update predictions (ensemble): ${DATE}"
+            git push
+          fi
