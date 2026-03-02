@@ -162,28 +162,42 @@ class AutomartCrawler:
                     if response.status == 200:
                         content = await response.read()
 
-                        # AJAX 응답은 HTML fragment라서 regex로 파싱
-                        # href="..." 패턴에서 기관 링크 추출
-                        href_pattern = rb'href="([^"]+(?:sisul_total_view|sisul_BidResult)\.asp[^"]*)"[^>]*>([^<]*)</a>'
-                        matches = re.findall(href_pattern, content)
+                        # Decode content for BeautifulSoup parsing
+                        try:
+                            html_text = content.decode('euc-kr')
+                        except UnicodeDecodeError:
+                            html_text = content.decode('utf-8', errors='ignore')
 
+                        soup_list = BeautifulSoup(html_text, 'lxml')
                         count = 0
-                        for href_bytes, name_bytes in matches:
-                            href = href_bytes.decode('ascii', errors='ignore')
-                            try:
-                                name = name_bytes.decode('euc-kr')
-                            except:
-                                name = name_bytes.decode('utf-8', errors='ignore')
 
-                            if href:
-                                full_url = urljoin(BASE_URL, href)
-                                institution_name = f"[{status}]{name.strip()}"
-                                auction_date = ""
-                                key = (full_url, auction_date)
-                                if key not in seen_keys:
-                                    seen_keys.add(key)
-                                    institutions.append((institution_name, full_url, auction_date))
-                                    count += 1
+                        for row in soup_list.find_all('tr'):
+                            link = row.find('a', href=True)
+                            if not link:
+                                continue
+                            href = link.get('href', '')
+                            if 'sisul_total_view.asp' not in href and 'sisul_BidResult.asp' not in href:
+                                continue
+
+                            full_url = urljoin(BASE_URL, href)
+                            name = link.get_text(strip=True)
+                            institution_name = f"[{status}]{name}"
+
+                            # Extract auction date from cells
+                            auction_date = ""
+                            cells = row.find_all('td')
+                            for cell in cells:
+                                text = cell.get_text(strip=True)
+                                if re.match(r'\d{4}-\d{2}-\d{2}', text):
+                                    auction_date = text
+                                    break
+
+                            key = (full_url, auction_date)
+                            if key not in seen_keys:
+                                seen_keys.add(key)
+                                institutions.append((institution_name, full_url, auction_date))
+                                count += 1
+
                         logger.info(f"[{status}] {count}개 기관")
             except Exception as e:
                 logger.warning(f"[{status}] 수집 실패: {e}")
@@ -539,6 +553,16 @@ class AutomartCrawler:
             try:
                 existing_df = pd.read_csv(filename, encoding='utf-8-sig')
                 existing_count = len(existing_df)
+
+                # 기존 [진행중]/[진행예정] 행 제거 (최신 크롤 데이터로 교체)
+                stale_mask = existing_df['기관명'].str.contains(
+                    r'\[진행중\]|\[진행예정\]', na=False)
+                stale_count = stale_mask.sum()
+                if stale_count > 0:
+                    existing_df = existing_df[~stale_mask]
+                    logger.info(f"기존 [진행중/진행예정] {stale_count}건 제거 (최신 데이터로 교체)")
+                existing_count = len(existing_df)
+
                 combined_df = pd.concat([existing_df, new_df], ignore_index=True)
             except Exception as e:
                 logger.warning(f"기존 파일 로드 실패, 새로 생성합니다: {e}")
@@ -554,6 +578,20 @@ class AutomartCrawler:
         )
         after_dedup = len(combined_df)
         duplicates_removed = before_dedup - after_dedup
+
+        # [진행중/진행예정] 중 경매일시가 오늘 이전인 항목 제거
+        from datetime import date as _date
+        today_str = _date.today().strftime('%Y-%m-%d')
+        upcoming_mask = combined_df['기관명'].str.contains(
+            r'\[진행중\]|\[진행예정\]', na=False)
+        date_extracted = combined_df['경매일시'].astype(str).str.extract(
+            r'(\d{4}-\d{2}-\d{2})', expand=False)
+        has_date = date_extracted.notna()
+        past_mask = upcoming_mask & has_date & (date_extracted < today_str)
+        past_count = past_mask.sum()
+        if past_count > 0:
+            combined_df = combined_df[~past_mask]
+            logger.info(f"경매 종료된 [진행중/진행예정] {past_count}건 제거")
 
         # 경매일시 기준 정렬 (최신순)
         combined_df = combined_df.sort_values('경매일시', ascending=False)

@@ -282,7 +282,16 @@
   }
 
   function isUpcoming(row) {
-    return (row['기관명'] || '').indexOf('진행중') >= 0;
+    var org = row['기관명'] || '';
+    if (org.indexOf('진행중') < 0 && org.indexOf('진행예정') < 0) return false;
+    // 경매일시가 오늘 이전이면 이미 종료된 경매
+    var dateStr = row['경매일시'] || '';
+    var m = dateStr.match(/(\d{4}-\d{2}-\d{2})/);
+    if (m) {
+      var today = new Date().toISOString().slice(0, 10);
+      if (m[1] < today) return false;
+    }
+    return true;
   }
 
   var csvUrl = 'automart_master.csv';
