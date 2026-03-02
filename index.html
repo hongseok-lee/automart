@@ -121,6 +121,40 @@
     white-space: pre-wrap;
     word-break: break-all;
   }
+  /* Chart section */
+  .charts-section {
+    max-width: 1400px;
+    margin: 24px auto 0;
+  }
+  .charts-section h2 {
+    font-size: 1.15rem;
+    margin: 0 0 12px;
+  }
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 900px) {
+    .chart-grid { grid-template-columns: 1fr; }
+  }
+  .chart-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    min-height: 420px;
+    position: relative;
+  }
+  .chart-card h3 {
+    font-size: 0.95rem;
+    margin: 0 0 4px;
+  }
+  .chart-card .chart-sub {
+    font-size: 0.75rem;
+    color: #888;
+    margin: 0 0 12px;
+  }
 </style>
 </head>
 <body>
@@ -142,9 +176,26 @@
   </table>
 </div>
 
+<div class="charts-section">
+  <h2>모델별 예정가 vs 낙찰금액 분포</h2>
+  <div class="chart-grid">
+    <div class="chart-card">
+      <h3>카니발</h3>
+      <p class="chart-sub">모델연도별 예정가(시작가)와 낙찰금액 비교</p>
+      <div style="position:relative;height:360px;"><canvas id="chart-carnival"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>쏘렌토</h3>
+      <p class="chart-sub">모델연도별 예정가(시작가)와 낙찰금액 비교</p>
+      <div style="position:relative;height:360px;"><canvas id="chart-sorento"></canvas></div>
+    </div>
+  </div>
+</div>
+
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (function() {
   // Column definitions
@@ -199,6 +250,7 @@
         return;
       }
       buildTable(results.data);
+      buildCharts(results.data);
     },
     error: function() {
       document.getElementById('loading').style.display = 'none';
@@ -349,6 +401,85 @@
     // Stats
     document.getElementById('stats').textContent =
       '총 ' + data.length.toLocaleString() + '건 | 마지막 업데이트: CSV 커밋 시점 기준';
+  }
+
+  function buildCharts(data) {
+    var configs = [
+      { id: 'chart-carnival', pattern: /카니발|carnival|ka4/i },
+      { id: 'chart-sorento',  pattern: /쏘렌토|sorento/i }
+    ];
+
+    configs.forEach(function(cfg) {
+      var startPts = [];
+      var bidPts = [];
+
+      data.forEach(function(row) {
+        if (!cfg.pattern.test(row['차량모델'] || '')) return;
+        var year = Number(row['모델연도']);
+        var start = parseNum(row['예정가']);
+        var bid = parseNum(row['낙찰금액']);
+        if (!year || year < 2000 || (!start && !bid)) return;
+        var MAN = 10000;
+        if (start > 0) startPts.push({ x: year, y: start / MAN, model: row['차량모델'], date: row['경매일시'] });
+        if (bid > 0) bidPts.push({ x: year, y: bid / MAN, model: row['차량모델'], date: row['경매일시'] });
+      });
+
+      var ctx = document.getElementById(cfg.id).getContext('2d');
+      new Chart(ctx, {
+        type: 'scatter',
+        data: {
+          datasets: [
+            {
+              label: '예정가(시작가)',
+              data: startPts,
+              backgroundColor: 'rgba(59,130,246,0.45)',
+              borderColor: 'rgba(59,130,246,0.7)',
+              pointRadius: 4,
+              pointHoverRadius: 7,
+              order: 2
+            },
+            {
+              label: '낙찰금액',
+              data: bidPts,
+              backgroundColor: 'rgba(239,68,68,0.45)',
+              borderColor: 'rgba(239,68,68,0.7)',
+              pointRadius: 4,
+              pointHoverRadius: 7,
+              order: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'nearest', intersect: true },
+          scales: {
+            x: {
+              title: { display: true, text: '모델연도' },
+              ticks: { stepSize: 1, callback: function(v) { return String(v); } }
+            },
+            y: {
+              title: { display: true, text: '금액 (만원)' },
+              ticks: { callback: function(v) { return v.toLocaleString(); } },
+              beginAtZero: true
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(ctx) {
+                  var p = ctx.raw;
+                  return ctx.dataset.label + ': ' + Math.round(p.y).toLocaleString() + '만원'
+                    + ' | ' + (p.model || '').substring(0, 25)
+                    + ' | ' + (p.date || '');
+                }
+              }
+            },
+            legend: { position: 'top', labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 11 } } }
+          }
+        }
+      });
+    });
   }
 })();
 </script>
