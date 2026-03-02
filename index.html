@@ -403,6 +403,32 @@
       '총 ' + data.length.toLocaleString() + '건 | 마지막 업데이트: CSV 커밋 시점 기준';
   }
 
+  // Custom plugin: draw lines connecting start→bid for each case
+  var dumbbellPlugin = {
+    id: 'dumbbell',
+    beforeDatasetsDraw: function(chart) {
+      var meta0 = chart.getDatasetMeta(0); // 예정가
+      var meta1 = chart.getDatasetMeta(1); // 낙찰금액
+      var ctx = chart.ctx;
+      var pairs = chart.data._pairs || [];
+      ctx.save();
+      pairs.forEach(function(p) {
+        var startEl = meta0.data[p[0]];
+        var bidEl = meta1.data[p[1]];
+        if (!startEl || !bidEl) return;
+        var up = bidEl.y < startEl.y; // bid > start means higher on chart
+        ctx.beginPath();
+        ctx.moveTo(startEl.x, startEl.y);
+        ctx.lineTo(bidEl.x, bidEl.y);
+        ctx.strokeStyle = up ? 'rgba(239,68,68,0.25)' : 'rgba(59,130,246,0.25)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+  };
+  Chart.register(dumbbellPlugin);
+
   function buildCharts(data) {
     var configs = [
       { id: 'chart-carnival', pattern: /카니발|carnival|ka4/i },
@@ -412,43 +438,53 @@
     configs.forEach(function(cfg) {
       var startPts = [];
       var bidPts = [];
+      var pairs = [];
+      var MAN = 10000;
 
       data.forEach(function(row) {
         if (!cfg.pattern.test(row['차량모델'] || '')) return;
         var year = Number(row['모델연도']);
         var start = parseNum(row['예정가']);
         var bid = parseNum(row['낙찰금액']);
-        if (!year || year < 2000 || (!start && !bid)) return;
-        var MAN = 10000;
-        if (start > 0) startPts.push({ x: year, y: start / MAN, model: row['차량모델'], date: row['경매일시'] });
-        if (bid > 0) bidPts.push({ x: year, y: bid / MAN, model: row['차량모델'], date: row['경매일시'] });
+        if (!year || year < 2000 || start <= 0 || bid <= 0) return;
+        // jitter x so overlapping points spread out
+        var jitter = (Math.random() - 0.5) * 0.4;
+        var info = { model: row['차량모델'], date: row['경매일시'], start: start, bid: bid };
+        var si = startPts.length;
+        var bi = bidPts.length;
+        startPts.push({ x: year + jitter, y: start / MAN, model: info.model, date: info.date, bid: bid / MAN });
+        bidPts.push({ x: year + jitter, y: bid / MAN, model: info.model, date: info.date, start: start / MAN });
+        pairs.push([si, bi]);
       });
+
+      var chartData = {
+        datasets: [
+          {
+            label: '예정가(시작가)',
+            data: startPts,
+            backgroundColor: 'rgba(59,130,246,0.5)',
+            borderColor: 'rgba(59,130,246,0.8)',
+            pointRadius: 3.5,
+            pointHoverRadius: 7,
+            order: 2
+          },
+          {
+            label: '낙찰금액',
+            data: bidPts,
+            backgroundColor: 'rgba(239,68,68,0.5)',
+            borderColor: 'rgba(239,68,68,0.8)',
+            pointRadius: 3.5,
+            pointHoverRadius: 7,
+            order: 1
+          }
+        ],
+        _pairs: pairs
+      };
 
       var ctx = document.getElementById(cfg.id).getContext('2d');
       new Chart(ctx, {
         type: 'scatter',
-        data: {
-          datasets: [
-            {
-              label: '예정가(시작가)',
-              data: startPts,
-              backgroundColor: 'rgba(59,130,246,0.45)',
-              borderColor: 'rgba(59,130,246,0.7)',
-              pointRadius: 4,
-              pointHoverRadius: 7,
-              order: 2
-            },
-            {
-              label: '낙찰금액',
-              data: bidPts,
-              backgroundColor: 'rgba(239,68,68,0.45)',
-              borderColor: 'rgba(239,68,68,0.7)',
-              pointRadius: 4,
-              pointHoverRadius: 7,
-              order: 1
-            }
-          ]
-        },
+        data: chartData,
         options: {
           responsive: true,
           maintainAspectRatio: false,
@@ -456,7 +492,7 @@
           scales: {
             x: {
               title: { display: true, text: '모델연도' },
-              ticks: { stepSize: 1, callback: function(v) { return String(v); } }
+              ticks: { stepSize: 1, callback: function(v) { return String(Math.round(v)); } }
             },
             y: {
               title: { display: true, text: '금액 (만원)' },
@@ -467,11 +503,16 @@
           plugins: {
             tooltip: {
               callbacks: {
-                label: function(ctx) {
-                  var p = ctx.raw;
-                  return ctx.dataset.label + ': ' + Math.round(p.y).toLocaleString() + '만원'
-                    + ' | ' + (p.model || '').substring(0, 25)
-                    + ' | ' + (p.date || '');
+                label: function(c) {
+                  var p = c.raw;
+                  var lines = [c.dataset.label + ': ' + Math.round(p.y).toLocaleString() + '만원'];
+                  if (p.bid) lines.push('낙찰: ' + Math.round(p.bid).toLocaleString() + '만원');
+                  if (p.start) lines.push('예정: ' + Math.round(p.start).toLocaleString() + '만원');
+                  var diff = p.bid ? (p.bid - p.y) : (p.y - p.start);
+                  if (diff) lines.push('차이: ' + (diff > 0 ? '+' : '') + Math.round(diff).toLocaleString() + '만원');
+                  lines.push((p.model || '').substring(0, 30));
+                  lines.push(p.date || '');
+                  return lines;
                 }
               }
             },
