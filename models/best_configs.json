@@ -1,6 +1,25 @@
 {
   "carnival": [
     {
+      "config_id": 4,
+      "config": {
+        "n_estimators": 200,
+        "max_depth": 4,
+        "learning_rate": 0.1,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 5,
+        "gamma": 0.3,
+        "reg_alpha": 1.0,
+        "reg_lambda": 5
+      },
+      "val_rmse": 1029240.843129926,
+      "val_mae": 297694.625,
+      "val_r2": 0.9950597286224365,
+      "test_rmse": 689037.8184088881,
+      "test_r2": 0.9973782896995544
+    },
+    {
       "config_id": 6,
       "config": {
         "n_estimators": 300,
@@ -13,49 +32,30 @@
         "reg_alpha": 0,
         "reg_lambda": 1
       },
-      "val_rmse": 1091977.3964415987,
-      "val_mae": 304528.375,
-      "val_r2": 0.9940122365951538,
-      "test_rmse": 544495.0065935182,
-      "test_r2": 0.9983592629432678
+      "val_rmse": 1047385.8763739634,
+      "val_mae": 215286.4375,
+      "val_r2": 0.9948840141296387,
+      "test_rmse": 614352.618662772,
+      "test_r2": 0.9979158639907837
     },
     {
-      "config_id": 1,
+      "config_id": 11,
       "config": {
-        "n_estimators": 500,
-        "max_depth": 6,
-        "learning_rate": 0.05,
-        "subsample": 0.8,
+        "n_estimators": 600,
+        "max_depth": 3,
+        "learning_rate": 0.03,
+        "subsample": 0.7,
         "colsample_bytree": 0.8,
-        "min_child_weight": 1,
-        "gamma": 0,
-        "reg_alpha": 0,
-        "reg_lambda": 1
+        "min_child_weight": 5,
+        "gamma": 0.2,
+        "reg_alpha": 0.1,
+        "reg_lambda": 3
       },
-      "val_rmse": 1193948.6353229487,
-      "val_mae": 285167.59375,
-      "val_r2": 0.9928417205810547,
-      "test_rmse": 557653.182851089,
-      "test_r2": 0.9982789754867554
-    },
-    {
-      "config_id": 8,
-      "config": {
-        "n_estimators": 800,
-        "max_depth": 4,
-        "learning_rate": 0.01,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
-        "min_child_weight": 1,
-        "gamma": 0,
-        "reg_alpha": 0,
-        "reg_lambda": 1
-      },
-      "val_rmse": 1205600.4778905467,
-      "val_mae": 407959.96875,
-      "val_r2": 0.9927013516426086,
-      "test_rmse": 594192.2204364709,
-      "test_r2": 0.9980460405349731
+      "val_rmse": 1066626.0634440496,
+      "val_mae": 377509.71875,
+      "val_r2": 0.9946942925453186,
+      "test_rmse": 728318.8426419798,
+      "test_r2": 0.9970709085464478
     },
     {
       "config_id": 15,
@@ -70,70 +70,89 @@
         "reg_alpha": 0,
         "reg_lambda": 1
       },
-      "val_rmse": 1209513.7936662005,
-      "val_mae": 437038.4375,
-      "val_r2": 0.9926539063453674,
-      "test_rmse": 594113.4099912759,
-      "test_r2": 0.9980465769767761
+      "val_rmse": 1071684.6978442334,
+      "val_mae": 324824.5,
+      "val_r2": 0.9946438670158386,
+      "test_rmse": 682640.44984662,
+      "test_r2": 0.9974267482757568
     },
     {
-      "config_id": 19,
+      "config_id": 14,
       "config": {
         "n_estimators": 200,
-        "max_depth": 5,
+        "max_depth": 4,
         "learning_rate": 0.1,
         "subsample": 0.8,
         "colsample_bytree": 0.8,
         "min_child_weight": 1,
-        "gamma": 0.5,
+        "gamma": 0,
         "reg_alpha": 0,
-        "reg_lambda": 1
+        "reg_lambda": 10
       },
-      "val_rmse": 1210448.8236201205,
-      "val_mae": 297211.59375,
-      "val_r2": 0.9926425218582153,
-      "test_rmse": 539160.7673135883,
-      "test_r2": 0.9983912110328674
+      "val_rmse": 1071992.1191910685,
+      "val_mae": 292315.9375,
+      "val_r2": 0.9946407675743103,
+      "test_rmse": 708482.2430448857,
+      "test_r2": 0.9972282648086548
     }
   ],
   "sorento": [
     {
-      "config_id": 16,
+      "config_id": 15,
       "config": {
-        "n_estimators": 350,
-        "max_depth": 5,
-        "learning_rate": 0.07,
-        "subsample": 0.8,
+        "n_estimators": 500,
+        "max_depth": 3,
+        "learning_rate": 0.03,
+        "subsample": 0.9,
         "colsample_bytree": 0.9,
-        "min_child_weight": 2,
-        "gamma": 0.05,
-        "reg_alpha": 0.05,
-        "reg_lambda": 1.5
+        "min_child_weight": 1,
+        "gamma": 0,
+        "reg_alpha": 0,
+        "reg_lambda": 1
       },
-      "val_rmse": 598567.7852347363,
-      "val_mae": 195935.0625,
-      "val_r2": 0.9962664842605591,
-      "test_rmse": 1286186.914684621,
-      "test_r2": 0.9857050180435181
+      "val_rmse": 1650340.1346684427,
+      "val_mae": 670254.9375,
+      "val_r2": 0.9779160022735596,
+      "test_rmse": 1293643.491794243,
+      "test_r2": 0.9869911074638367
     },
     {
-      "config_id": 10,
+      "config_id": 1,
       "config": {
-        "n_estimators": 400,
-        "max_depth": 5,
+        "n_estimators": 500,
+        "max_depth": 6,
         "learning_rate": 0.05,
-        "subsample": 0.85,
-        "colsample_bytree": 0.85,
-        "min_child_weight": 3,
-        "gamma": 0.1,
-        "reg_alpha": 0.01,
-        "reg_lambda": 2
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 1,
+        "gamma": 0,
+        "reg_alpha": 0,
+        "reg_lambda": 1
       },
-      "val_rmse": 608541.3335543966,
-      "val_mae": 211808.09375,
-      "val_r2": 0.9961410164833069,
-      "test_rmse": 1423199.1424023386,
-      "test_r2": 0.9824972152709961
+      "val_rmse": 1675464.031176842,
+      "val_mae": 682462.5,
+      "val_r2": 0.9772384762763977,
+      "test_rmse": 1210430.4372042578,
+      "test_r2": 0.9886108636856079
+    },
+    {
+      "config_id": 5,
+      "config": {
+        "n_estimators": 200,
+        "max_depth": 5,
+        "learning_rate": 0.1,
+        "subsample": 1.0,
+        "colsample_bytree": 1.0,
+        "min_child_weight": 1,
+        "gamma": 0,
+        "reg_alpha": 0,
+        "reg_lambda": 1
+      },
+      "val_rmse": 1709520.719190923,
+      "val_mae": 631083.875,
+      "val_r2": 0.97630375623703,
+      "test_rmse": 2159846.0730125653,
+      "test_r2": 0.9637376070022583
     },
     {
       "config_id": 3,
@@ -148,30 +167,11 @@
         "reg_alpha": 0.1,
         "reg_lambda": 2
       },
-      "val_rmse": 612233.3406146982,
-      "val_mae": 272574.34375,
-      "val_r2": 0.9960940480232239,
-      "test_rmse": 1194176.8323367208,
-      "test_r2": 0.9876770973205566
-    },
-    {
-      "config_id": 18,
-      "config": {
-        "n_estimators": 300,
-        "max_depth": 5,
-        "learning_rate": 0.1,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
-        "min_child_weight": 7,
-        "gamma": 0.1,
-        "reg_alpha": 0,
-        "reg_lambda": 1
-      },
-      "val_rmse": 622792.2330348761,
-      "val_mae": 245257.90625,
-      "val_r2": 0.995958149433136,
-      "test_rmse": 1571334.8649178413,
-      "test_r2": 0.978663980960846
+      "val_rmse": 1752103.6929320982,
+      "val_mae": 834511.4375,
+      "val_r2": 0.9751085638999939,
+      "test_rmse": 1169654.2110853745,
+      "test_r2": 0.98936527967453
     },
     {
       "config_id": 8,
@@ -186,11 +186,11 @@
         "reg_alpha": 0,
         "reg_lambda": 1
       },
-      "val_rmse": 664838.0350184416,
-      "val_mae": 288703.5625,
-      "val_r2": 0.9953939914703369,
-      "test_rmse": 1543252.3688465268,
-      "test_r2": 0.9794198274612427
+      "val_rmse": 1795607.065364156,
+      "val_mae": 832619.25,
+      "val_r2": 0.9738571643829346,
+      "test_rmse": 1177648.9116473459,
+      "test_r2": 0.9892194271087646
     }
   ]
 }
